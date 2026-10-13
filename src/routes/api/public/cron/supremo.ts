@@ -9,7 +9,7 @@ export const Route = createFileRoute("/api/public/cron/supremo")({
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         const { verifyCronToken } = await import("@/lib/cron-auth.server");
         if (!(await verifyCronToken(request, supabaseAdmin))) return new Response("Unauthorized", { status: 401 });
-        const { runPriceProbe } = await import("@/lib/price-probe.server");
+        const { runPriceProbe, probeSymbols } = await import("@/lib/price-probe.server");
         const { runCloudCycle } = await import("@/lib/cloud-run.server");
         const { countExternalFetches } = await import("@/lib/fetch-counter");
         const started = Date.now();
@@ -19,7 +19,7 @@ export const Route = createFileRoute("/api/public/cron/supremo")({
         let probe: Awaited<ReturnType<typeof runPriceProbe>> = { responded: 0, total: 0, sources: [] } as never;
         try {
           try {
-            probe = await runPriceProbe();
+            probe = await runPriceProbe(probeSymbols());
             cycle = await runCloudCycle(supabaseAdmin);
           } catch (e) {
             // Falha no probe ou no ciclo: ainda registramos erro e duração abaixo.

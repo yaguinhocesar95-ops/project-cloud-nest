@@ -83,11 +83,17 @@ async function probeOne(symbol: string, deadline: number): Promise<CoinProbe> {
   return out;
 }
 
-export async function runPriceProbe() {
+/** Conferência completa a cada FULL_PROBE_EVERY_MIN minutos; nos outros, só BTC e SOL (mantém o sinal de saúde). */
+export const FULL_PROBE_EVERY_MIN = 5;
+export function probeSymbols(now = Date.now()): readonly string[] {
+  return Math.floor(now / 60_000) % FULL_PROBE_EVERY_MIN === 0 ? SERVER_UNIVERSE : ["BTCUSDT", "SOLUSDT"];
+}
+
+export async function runPriceProbe(symbols: readonly string[] = SERVER_UNIVERSE) {
   // Uma moeda por vez, com pausa: 10 pedidos simultâneos geram HTTP 429 na OKX a partir da nuvem.
   const deadline = Date.now() + 35_000; // sem novas tentativas depois disso: a rodada termina antes do limite
   const coins: CoinProbe[] = [];
-  for (const s of SERVER_UNIVERSE) {
+  for (const s of symbols) {
     coins.push(await probeOne(s, deadline));
     await sleep(300);
   }

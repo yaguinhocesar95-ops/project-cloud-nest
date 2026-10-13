@@ -215,8 +215,25 @@ export function useSupremoAuto(opts: {
   const genRef = useRef(generate);
   genRef.current = generate;
 
+  // Análise ao abrir: com o robô ligado roda já; desligado, espera a página ficar ociosa
+  // (não disputa com o carregamento) e só se a aba estiver visível. Botão Atualizar segue manual.
   useEffect(() => {
-    void genRef.current(false);
+    if (opts.enabled) {
+      void genRef.current(false);
+      return;
+    }
+    const run = () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      void genRef.current(false);
+    };
+    const w = typeof window !== "undefined" ? (window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void }) : null;
+    if (w?.requestIdleCallback) {
+      const id = w.requestIdleCallback(run, { timeout: 5_000 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const t = setTimeout(run, 1_500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

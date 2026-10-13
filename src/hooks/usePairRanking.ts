@@ -1,3 +1,4 @@
+import { fetchJsonTimed } from "@/lib/fetch-json";
 /**
  * Junta o que já existe para montar o ranking informativo entre pares:
  * janela de 180 s de cada par → mesmo motor → mesmos filtros, mais as métricas
@@ -54,9 +55,7 @@ export function usePairRanking(
     const load = async () => {
       for (const host of hosts) {
         try {
-          const res = await fetch(`${host}/api/v3/exchangeInfo?symbolStatus=TRADING`);
-          if (!res.ok) continue;
-          const raw = (await res.json()) as { symbols?: { symbol?: string }[] };
+          const raw = await fetchJsonTimed<{ symbols?: { symbol?: string }[] }>(`${host}/api/v3/exchangeInfo?symbolStatus=TRADING`);
           const set = new Set((raw.symbols ?? []).map((x) => x.symbol ?? ""));
           if (alive && set.size > 0) setTrading(set);
           return;

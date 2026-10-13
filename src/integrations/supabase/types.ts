@@ -14,13 +14,173 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      cron_config: {
+        Row: {
+          id: number
+          token: string
+        }
+        Insert: {
+          id?: number
+          token?: string
+        }
+        Update: {
+          id?: number
+          token?: string
+        }
+        Relationships: []
+      }
+      cron_lock: {
+        Row: {
+          holder: string | null
+          id: number
+          locked_until: string
+        }
+        Insert: {
+          holder?: string | null
+          id?: number
+          locked_until?: string
+        }
+        Update: {
+          holder?: string | null
+          id?: number
+          locked_until?: string
+        }
+        Relationships: []
+      }
+      cron_runs: {
+        Row: {
+          cycle: Json | null
+          duration_ms: number
+          error: string | null
+          id: number
+          ok: boolean
+          probe: Json | null
+          ran_at: string
+          requests: number
+          responded: number
+          skipped: boolean
+          sources: string[]
+          total: number
+          users_deferred: number
+          users_processed: number
+        }
+        Insert: {
+          cycle?: Json | null
+          duration_ms?: number
+          error?: string | null
+          id?: never
+          ok: boolean
+          probe?: Json | null
+          ran_at?: string
+          requests?: number
+          responded?: number
+          skipped?: boolean
+          sources?: string[]
+          total?: number
+          users_deferred?: number
+          users_processed?: number
+        }
+        Update: {
+          cycle?: Json | null
+          duration_ms?: number
+          error?: string | null
+          id?: never
+          ok?: boolean
+          probe?: Json | null
+          ran_at?: string
+          requests?: number
+          responded?: number
+          skipped?: boolean
+          sources?: string[]
+          total?: number
+          users_deferred?: number
+          users_processed?: number
+        }
+        Relationships: []
+      }
+      daily_stats: {
+        Row: {
+          bets: number
+          by_coin: Json
+          combo: string | null
+          day: string
+          losses: number
+          net_pct: number
+          regime: string | null
+          updated_at: string
+          user_id: string
+          wins: number
+        }
+        Insert: {
+          bets?: number
+          by_coin?: Json
+          combo?: string | null
+          day: string
+          losses?: number
+          net_pct?: number
+          regime?: string | null
+          updated_at?: string
+          user_id: string
+          wins?: number
+        }
+        Update: {
+          bets?: number
+          by_coin?: Json
+          combo?: string | null
+          day?: string
+          losses?: number
+          net_pct?: number
+          regime?: string | null
+          updated_at?: string
+          user_id?: string
+          wins?: number
+        }
+        Relationships: []
+      }
+      user_kv: {
+        Row: {
+          key: string
+          updated_at: string
+          user_id: string
+          value: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          user_id: string
+          value?: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          user_id?: string
+          value?: Json
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      cron_status: {
+        Args: never
+        Returns: {
+          duration_ms: number
+          error: string
+          ok: boolean
+          ran_at: string
+          requests: number
+          skipped: boolean
+          users_deferred: number
+          users_processed: number
+        }[]
+      }
+      release_cron_lock: { Args: { p_holder: string }; Returns: undefined }
+      try_cron_lock: {
+        Args: { p_holder: string; p_lease_seconds: number }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never

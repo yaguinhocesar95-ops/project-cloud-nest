@@ -1,3 +1,4 @@
+import { fetchJsonTimed, isArray } from "@/lib/fetch-json";
 /**
  * Função de servidor que sugere parâmetros de custo para um par.
  *
@@ -42,9 +43,7 @@ export const suggestCostParams = createServerFn({ method: "GET" })
     let target = symbol;
     for (const host of ["https://data-api.binance.vision", "https://api.binance.com"]) {
       try {
-        const res = await fetch(`${host}/api/v3/ticker/24hr`);
-        if (!res.ok) continue;
-        const rows = (await res.json()) as Ticker24h[];
+        const rows = await fetchJsonTimed<Ticker24h[]>(`${host}/api/v3/ticker/24hr`, { validate: isArray as never });
         ranked = rows
           .filter((r) => (quote ? r.symbol.endsWith(quote) : true) && Number(r.lastPrice) > 0)
           .map((r) => ({ symbol: r.symbol, quoteVolume: Number(r.quoteVolume) || 0 }))
@@ -56,11 +55,9 @@ export const suggestCostParams = createServerFn({ method: "GET" })
       }
     }
     if (!ranked) {
-      const res = await fetch("https://www.okx.com/api/v5/market/tickers?instType=SPOT");
-      if (!res.ok) throw new Error(`tickers OKX falhou (${res.status})`);
-      const body = (await res.json()) as {
+      const body = await fetchJsonTimed<{
         data?: { instId: string; last: string; volCcy24h: string }[];
-      };
+      }>("https://www.okx.com/api/v5/market/tickers?instType=SPOT");
       ranked = (body.data ?? [])
         .filter((r) => r.instId.endsWith("-USDT") && Number(r.last) > 0)
         .map((r) => ({ symbol: r.instId.replace("-", ""), quoteVolume: Number(r.volCcy24h) || 0 }))

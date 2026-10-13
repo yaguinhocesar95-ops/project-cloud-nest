@@ -3,6 +3,7 @@
  * fechada (memória + IndexedDB), concorrência limitada e retry com backoff.
  */
 import { REST_BASE } from "./binance";
+import { HttpError, fetchJsonTimed, isArray } from "./fetch-json";
 import { getMarketSource, sourceRange } from "./market-source";
 
 /** Chaves de cache separadas por corretora: velas de fontes diferentes nunca se misturam. */
@@ -24,17 +25,14 @@ export async function fetchUniverse(opts: {
   topN: number | null;
   usdtBrl: number | null;
 }): Promise<UniverseCoin[]> {
-  const [tickRes, infoRes] = await Promise.all([
-    fetch(`${REST_BASE}/api/v3/ticker/24hr`),
-    fetch(`${REST_BASE}/api/v3/exchangeInfo?permissions=SPOT&symbolStatus=TRADING`),
+  const [rows, info] = await Promise.all([
+    fetchJsonTimed<Ticker24h[]>(`${REST_BASE}/api/v3/ticker/24hr`, { validate: isArray as never }),
+    fetchJsonTimed<{ symbols: { symbol: string; quoteAsset: string }[] }>(
+      `${REST_BASE}/api/v3/exchangeInfo?permissions=SPOT&symbolStatus=TRADING`,
+    ).catch(() => null),
   ]);
-  if (!tickRes.ok) throw new Error(`ticker/24hr falhou (${tickRes.status})`);
   const active = new Set<string>();
-  if (infoRes.ok) {
-    const info = (await infoRes.json()) as { symbols: { symbol: string; quoteAsset: string }[] };
-    for (const s of info.symbols) if (s.quoteAsset === opts.quote) active.add(s.symbol);
-  }
-  const rows = (await tickRes.json()) as Ticker24h[];
+  for (const s of info?.symbols ?? []) if (s.quoteAsset === opts.quote) active.add(s.symbol);
   const fx = opts.quote === "BRL" ? opts.usdtBrl : 1;
   if (!fx) throw new Error("cotação USDT/BRL indisponível");
   const list = rows
@@ -80,43 +78,35 @@ async function fetchJson(url: string, signal?: AbortSignal): Promise<unknown> {
     const wait = pauseUntil - Date.now();
     if (wait > 0) await sleep(wait, signal);
     await acquire();
-    let res: Response;
+    let status = 0;
     try {
-      // Tempo-limite por requisição: uma conexão pendurada não pode travar o ciclo.
-      const ctl = new AbortController();
-      const to = setTimeout(() => ctl.abort(new DOMException("tempo esgotado", "TimeoutError")), 15_000);
-      const onAbort = () => ctl.abort(signal?.reason);
-      signal?.addEventListener("abort", onAbort);
-      try {
-        res = await fetch(url, { signal: ctl.signal });
-      } finally {
-        clearTimeout(to);
-        signal?.removeEventListener("abort", onAbort);
-      }
+      // Tempo-limite cobre headers E corpo: o timer só é limpo depois do JSON lido.
+      return await fetchJsonTimed(url, {
+        ms: 15_000,
+        signal,
+        fetchImpl: async (u, init) => {
+          const res = await fetch(u, init);
+          const used = Number(res.headers.get("x-mbx-used-weight-1m"));
+          // Perto do limite de 6000/min: pausa preventiva.
+          if (used > 4800) pauseUntil = Date.now() + 15_000;
+          if (res.status === 429 || res.status === 418) {
+            const retry = Number(res.headers.get("retry-after")) || 30;
+            pauseUntil = Date.now() + retry * 1000;
+          }
+          return res;
+        },
+      });
     } catch (e) {
+      if (signal?.aborted) throw e;
+      status = e instanceof HttpError ? e.status : 0;
+      // 4xx (símbolo removido, parâmetro inválido): não repete.
+      if (status >= 400 && status < 500 && status !== 429 && status !== 418) throw new Error(`Binance ${status}`);
+      if (attempt >= 4) throw status === 429 || status === 418 ? new Error(`Binance limite (${status})`) : status ? new Error(`Binance ${status}`) : e;
+      if (status !== 429 && status !== 418) await sleep(500 * 2 ** attempt, signal);
+      attempt++;
+    } finally {
       release();
-      if (signal?.aborted || attempt >= 4) throw e;
-      await sleep(500 * 2 ** attempt++, signal);
-      continue;
     }
-    release();
-    const used = Number(res.headers.get("x-mbx-used-weight-1m"));
-    // Perto do limite de 6000/min: pausa preventiva.
-    if (used > 4800) pauseUntil = Date.now() + 15_000;
-    if (res.status === 429 || res.status === 418) {
-      const retry = Number(res.headers.get("retry-after")) || 30;
-      pauseUntil = Date.now() + retry * 1000;
-      if (attempt++ >= 4) throw new Error(`Binance limite (${res.status})`);
-      continue;
-    }
-    if (!res.ok) {
-      if (res.status >= 500 && attempt < 4) {
-        await sleep(500 * 2 ** attempt++, signal);
-        continue;
-      }
-      throw new Error(`Binance ${res.status}`);
-    }
-    return res.json();
   }
 }
 

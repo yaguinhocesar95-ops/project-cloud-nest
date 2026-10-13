@@ -1,4 +1,5 @@
 import { getMarketSource, sourceTickers } from "./market-source";
+import { fetchJsonTimed, isArray } from "./fetch-json";
 /**
  * Endereços da Binance que o servidor da nuvem tenta, em ordem. A Binance passou a
  * recusar (403) os endereços comuns vindos da nuvem; o api-gcp responde.
@@ -94,9 +95,7 @@ async function fetchPairsRaw(): Promise<SymbolInfo[]> {
       .sort((a, b) => b.quoteVolume - a.quoteVolume)
       .slice(0, MAX_PAIRS) as SymbolInfo[];
   }
-  const res = await fetchWithTimeout(`${REST_BASE}/api/v3/ticker/24hr`);
-  if (!res.ok) throw new Error(`ticker/24hr falhou (${res.status})`);
-  const rows = (await res.json()) as Ticker24h[];
+  const rows = await fetchJsonTimed<Ticker24h[]>(`${REST_BASE}/api/v3/ticker/24hr`, { validate: isArray as never });
 
   return rows
     .filter(
@@ -135,9 +134,7 @@ export function formatPct(value: number): string {
 
 /** Cotação USDT→BRL usada para exibir os valores em reais ou em dólar. */
 export async function fetchUsdtBrl(): Promise<number> {
-  const res = await fetch(`${REST_BASE}/api/v3/ticker/price?symbol=USDTBRL`);
-  if (!res.ok) throw new Error(`ticker/price USDTBRL falhou (${res.status})`);
-  const data = (await res.json()) as { price?: string };
+  const data = await fetchJsonTimed<{ price?: string }>(`${REST_BASE}/api/v3/ticker/price?symbol=USDTBRL`, { ms: 10_000 });
   const price = Number(data.price);
   if (!isFinite(price) || price <= 0) throw new Error("cotação USDTBRL inválida");
   return price;

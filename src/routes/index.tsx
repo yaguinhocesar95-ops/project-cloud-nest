@@ -297,7 +297,9 @@ function Index() {
   // ===== Validar aposta 3 (Ranking): a cada minuto, a moeda com maior nota média
   // no último minuto em "Ranking de decisão" =====
   const supremoBets = useBets(null, null, quote, livePrices, "scalp-terminal-bets-supremo-v1", true);
-  const [supremoAutoOn, setSupremoAutoOnRaw] = useState(true);
+  // null = preferência ainda não lida (SSR/hidratação): nada automático começa antes disso.
+  const [supremoAutoPref, setSupremoAutoOnRaw] = useState<boolean | null>(null);
+  const supremoAutoOn = supremoAutoPref === true;
   const cloudUser = useCloudUser();
   useEffect(() => {
     setSupremoAutoOnRaw(readAutoOn());
@@ -307,13 +309,14 @@ function Index() {
   }, []);
   const setSupremoAutoOn = useCallback((v: boolean | ((p: boolean) => boolean)) => {
     setSupremoAutoOnRaw((prev) => {
-      const next = typeof v === "function" ? v(prev) : v;
+      const next = typeof v === "function" ? v(prev === true) : v;
       localStorage.setItem(AUTO_ON_KEY, String(next));
       return next;
     });
   }, []);
   const supremoAuto = useSupremoAuto({
     enabled: supremoAutoOn,
+    ready: supremoAutoPref !== null,
     serverRuns: cloudUser != null,
     userId: cloudUser?.id ?? null,
     placeBet: supremoBets.placeBet,

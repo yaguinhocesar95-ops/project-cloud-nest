@@ -6,7 +6,7 @@
 import { fetchPairs, type SymbolInfo } from "@/lib/binance";
 import type { Candle } from "@/lib/replay";
 import { convertMoney } from "@/lib/money";
-import { BAND_PCT, HOUR_MS, MIN_REPETICOES, analyzeWindow, liveBlocks, planBet, type LiveBlock } from "@/lib/supremo";
+import { BAND_PCT, HOUR_MS, MIN_REPETICOES, SUPREMO_MAX_AGE_MS, analyzeWindow, liveBlocks, planBet, type LiveBlock } from "@/lib/supremo";
 import { getClosedHour, getCurrentHour, getCurrentHourIncremental, getMinuteCandles24h, mapSettled } from "@/lib/supremo-data";
 import type { Bankroll } from "@/hooks/useBankroll";
 import type { Bet } from "@/hooks/useBets";
@@ -137,6 +137,18 @@ export async function buildMarketSnapshot(opts: { incremental?: boolean; signal?
   return { t, pairs, results, btc: btc!, eth: eth! };
 }
 
+/**
+ * Dado válido = velas não vazias, recentes (mesmo limite de "dados-velhos") e com
+ * cobertura completa da hora (mesmo critério de "cobertura"). Só conta para dataOk;
+ * não muda a seleção.
+ */
+export function hasValidData(window: readonly Candle[], fetchedAt: number, analysis: { complete: boolean }): boolean {
+  const last = window[window.length - 1];
+  if (!last) return false;
+  if (fetchedAt - (last.time + 1000) > SUPREMO_MAX_AGE_MS) return false;
+  return analysis.complete;
+}
+
 export async function runSupremoCycle(opts: {
   bets: readonly Bet[];
   bankroll: Bankroll;
@@ -154,12 +166,14 @@ export async function runSupremoCycle(opts: {
   const { pairs, results, t } = snap;
   const traumaMap = readTrauma();
   const quoteOf = new Map(pairs.map((p) => [p.symbol, p.quote]));
+  let validCount = 0;
   const rows = pairs.flatMap((p, i) => {
     const r = results[i];
     if (!r || !r.ok) return [];
     const from = r.value.fetchedAt - HOUR_MS;
     const window = [...r.value.prev, ...r.value.cur].filter((k) => k.time >= from);
     const analysis = analyzeWindow(window, from, HOUR_MS, BAND_PCT);
+    if (hasValidData(window, r.value.fetchedAt, analysis)) validCount++;
     const price = livePrices?.get(p.symbol) ?? analysis.lastClose;
     const blocks =
       price != null
@@ -173,11 +187,11 @@ export async function runSupremoCycle(opts: {
     return [row];
   });
 
+  // Efeitos (trauma, penalidade, auditoria) ficam em memória até o fim do trabalho assíncrono.
   if (signal?.aborted) throw new DOMException("cancelado", "AbortError");
-  writeTrauma(traumaMap);
   const reg = readRegime({ btc: snap.btc, eth: snap.eth, universe15: rows.map((r) => r.ch15), now: Date.now() });
   const exposure = readExposure();
-  const scoredRaw = await scoreRows(rows, comboResolver(), Date.now());
+  const scoredRaw = await scoreRows(rows, comboResolver(), Date.now(), signal);
   const nowP = Date.now();
   const penSnap: Record<string, Penalty> = {};
   const scoredRows = scoredRaw.map((r) => {
@@ -191,7 +205,9 @@ export async function runSupremoCycle(opts: {
     const blocks = [...r.blocks, ...extra.filter((b) => !r.blocks.includes(b))];
     return { ...r, blocks };
   });
+  // Última verificação: daqui em diante só há escrita síncrona, nada mais pode abortar.
   if (signal?.aborted) throw new DOMException("cancelado", "AbortError");
+  writeTrauma(traumaMap);
   writePenaltySnapshot(penSnap);
   const { chosen, coins } = selectCoin(scoredRows, (s) => {
     const c = scoredRows.find((x) => x.symbol === s)!.combo;
@@ -199,7 +215,7 @@ export async function runSupremoCycle(opts: {
   });
   const scored = scoredRows.filter((r) => r.report).sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
   const dataTotal = pairs.length;
-  const dataOk = rows.length;
+  const dataOk = validCount;
   const base = { scored, nextPick: chosen?.symbol ?? null, regime: reg, t, dataOk, dataTotal };
   if (!opts.place) return { ...base, note: null, bet: null, chosenRow: null };
   const cycleId = newId();

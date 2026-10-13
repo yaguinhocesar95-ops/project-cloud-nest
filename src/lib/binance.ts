@@ -67,7 +67,24 @@ export function fetchWithTimeout(url: string, ms = 15_000): Promise<Response> {
   return fetch(url, { signal: ctl.signal }).finally(() => clearTimeout(to));
 }
 
-export async function fetchPairs(): Promise<SymbolInfo[]> {
+/**
+ * No navegador, painel e ciclo Supremo compartilham a mesma resposta (~1,8 MB) por até
+ * PAIRS_TTL_MS e pedidos simultâneos viram um só. Na nuvem não há cache (cada rodada busca).
+ */
+export const PAIRS_TTL_MS = 10_000;
+let pairsCache: { at: number; p: Promise<SymbolInfo[]> } | null = null;
+export function _resetPairsCache() { pairsCache = null; }
+export function fetchPairs(): Promise<SymbolInfo[]> {
+  if (typeof window === "undefined") return fetchPairsRaw();
+  const now = Date.now();
+  if (pairsCache && now - pairsCache.at < PAIRS_TTL_MS) return pairsCache.p;
+  const p = fetchPairsRaw();
+  pairsCache = { at: now, p };
+  p.catch(() => { if (pairsCache?.p === p) pairsCache = null; });
+  return p;
+}
+
+async function fetchPairsRaw(): Promise<SymbolInfo[]> {
   const src = typeof window === "undefined" ? getMarketSource() : "binance";
   if (src !== "binance") {
     const rows = await sourceTickers(src);

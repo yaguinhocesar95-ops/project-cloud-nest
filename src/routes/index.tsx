@@ -71,8 +71,10 @@ function Index() {
   const symbolsQuery = useQuery({
     queryKey: ["pairs"],
     queryFn: fetchPairs,
-    refetchInterval: 15 * 1000,
-    staleTime: 10 * 1000,
+    // Preço ao vivo vem do websocket; a lista (volume 24h) muda devagar. Pausa com a aba oculta.
+    refetchInterval: 60 * 1000,
+    refetchIntervalInBackground: false,
+    staleTime: 30 * 1000,
   });
 
   const fxQuery = useQuery({

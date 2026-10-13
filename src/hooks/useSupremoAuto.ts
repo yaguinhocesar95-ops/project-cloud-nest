@@ -95,6 +95,8 @@ export function useSupremoAuto(opts: {
   enabled: boolean;
   /** Preferência salva já lida (após hidratação). Antes disso nada roda sozinho. */
   ready?: boolean;
+  /** Página só de análise (/supremo): analisa ao abrir mesmo com o robô desligado. */
+  analyzeWhenOff?: boolean;
   serverRuns?: boolean;
   /** Usuário com login: entra na chave canônica do ciclo (igual à da nuvem). */
   userId?: string | null;
@@ -223,10 +225,11 @@ export function useSupremoAuto(opts: {
   const startedRef = useRef(false);
   const ready = opts.ready ?? true;
   useEffect(() => {
-    if (!ready || !opts.enabled || startedRef.current) return;
+    const wanted = opts.enabled || opts.analyzeWhenOff === true;
+    if (!ready || !wanted || startedRef.current) return;
     if (typeof document === "undefined") return;
     const run = () => {
-      if (startedRef.current || !ctx.current.enabled) return;
+      if (startedRef.current || !(ctx.current.enabled || ctx.current.analyzeWhenOff)) return;
       startedRef.current = true;
       void genRef.current(false);
     };

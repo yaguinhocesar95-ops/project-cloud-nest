@@ -155,7 +155,7 @@ function SupremoPage() {
   const { bankroll } = useBankroll();
   const supremo = useBets(null, null, quote, livePrices, SUPREMO_STORAGE_KEY, true);
   // Painel "Melhor aposta agora" (só leitura; o registro automático desta página é o de baixo).
-  const best = useSupremoAuto({ enabled: false, placeBet: supremo.placeBet, bets: supremo.bets, bankroll, usdtBrl, livePrices });
+  const best = useSupremoAuto({ enabled: false, analyzeWhenOff: true, placeBet: supremo.placeBet, bets: supremo.bets, bankroll, usdtBrl, livePrices });
 
   // Sons das apostas Supremo desta tela (estrelinha, erro e gatilho de entrada).
   useEffect(() => {

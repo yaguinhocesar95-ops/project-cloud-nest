@@ -20,3 +20,4 @@
 - Per-coin Supremo target/stop lives in `src/lib/supremo-combo-profiles.ts`; scoring attaches the resolved combo to each row and bet creation reads it from the row, so score, plan and saved bet never diverge.
 - Automatic Supremo generation has one scheduler (cloud cron, with the main page's useSupremoAuto as stale-cloud fallback); /supremo only triggers manual runs through useSupremoAuto, so no second timer or rule path exists.
 - Automatic Supremo bets use `supremoBetId` (user + minute + symbol + combo) on both browser and server, and `placeBet` returns a confirmed accept/block result, so merges dedupe cycles and success feedback is never shown for a rejected bet.
+- In the browser `fetchPairs` shares one cached response (short TTL, in-flight dedup) between the panel and the Supremo cycle, because the full ticker list is ~1.8 MB and was the main bandwidth cost.

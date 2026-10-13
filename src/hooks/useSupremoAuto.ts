@@ -93,6 +93,8 @@ export function startSupremoTimer(
  */
 export function useSupremoAuto(opts: {
   enabled: boolean;
+  /** Preferência salva já lida (após hidratação). Antes disso nada roda sozinho. */
+  ready?: boolean;
   serverRuns?: boolean;
   /** Usuário com login: entra na chave canônica do ciclo (igual à da nuvem). */
   userId?: string | null;
@@ -215,29 +217,27 @@ export function useSupremoAuto(opts: {
   const genRef = useRef(generate);
   genRef.current = generate;
 
-  // Análise ao abrir: com o robô ligado roda já; desligado, espera a página ficar ociosa
-  // (não disputa com o carregamento) e só se a aba estiver visível. Botão Atualizar segue manual.
+  // Análise ao abrir: só depois que a preferência salva foi lida (`ready`) e só com o robô
+  // ligado. Desligado, nada é buscado sozinho (o botão Atualizar segue manual). Aba oculta
+  // espera ficar visível. Roda no máximo uma vez por montagem.
+  const startedRef = useRef(false);
+  const ready = opts.ready ?? true;
   useEffect(() => {
-    if (opts.enabled) {
-      void genRef.current(false);
-      return;
-    }
+    if (!ready || !opts.enabled || startedRef.current) return;
+    if (typeof document === "undefined") return;
     const run = () => {
-      if (typeof document !== "undefined" && document.hidden) return;
+      if (startedRef.current || !ctx.current.enabled) return;
+      startedRef.current = true;
       void genRef.current(false);
     };
-    const w = typeof window !== "undefined" ? (window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void }) : null;
-    if (w?.requestIdleCallback) {
-      const id = w.requestIdleCallback(run, { timeout: 5_000 });
-      return () => w.cancelIdleCallback?.(id);
-    }
-    const t = setTimeout(run, 1_500);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (!document.hidden) return void run();
+    const onVis = () => { if (!document.hidden) run(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [ready, opts.enabled]);
 
   useEffect(() => {
-    if (!opts.enabled) {
+    if (!opts.enabled || !ready) {
       setNextAt(null);
       return;
     }
@@ -272,7 +272,7 @@ export function useSupremoAuto(opts: {
     );
     setNextAt(timer.next());
     return () => timer.stop();
-  }, [opts.enabled, opts.serverRuns]);
+  }, [opts.enabled, opts.serverRuns, ready]);
 
   const countdown =
     nextAt == null

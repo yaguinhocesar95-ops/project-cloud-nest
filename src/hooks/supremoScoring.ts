@@ -28,6 +28,7 @@ export async function scoreRows(
   rows: readonly (SelectionRow & { quote: string; analysis: HourAnalysis })[],
   combo: ActiveCombo | ((symbol: string) => ResolvedCombo),
   now: number,
+  signal?: AbortSignal,
 ): Promise<ScoredRow[]> {
   const resolve = (symbol: string): ResolvedCombo =>
     typeof combo === "function" ? combo(symbol) : { combo, source: "global", reason: "combinação global" };
@@ -50,7 +51,8 @@ export async function scoreRows(
       .map((p) => p.r.symbol),
   ]);
   const targets = prepared.filter((p) => want.has(p.r.symbol));
-  const res = await mapSettled(targets, (p) => getMinuteCandles24h(p.r.symbol, now), () => {});
+  const res = await mapSettled(targets, (p) => getMinuteCandles24h(p.r.symbol, now, signal), () => {}, signal);
+  if (signal?.aborted) throw new DOMException("cancelado", "AbortError");
   const reports = new Map<string, HitRateReport>();
   targets.forEach((p, i) => {
     const x = res[i];
